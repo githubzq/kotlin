@@ -18,6 +18,7 @@ dependencies {
     compileOnly(intellijPluginDep("IntelliLang"))
     compileOnly(intellijPluginDep("copyright"))
     compileOnly(intellijPluginDep("properties"))
+    compileOnly("org.picocontainer:picocontainer:1.2")
     compileOnly(intellijPluginDep("java-i18n"))
 }
 
