@@ -20,6 +20,7 @@ import org.jetbrains.annotations.TestOnly
 import org.jetbrains.kotlin.descriptors.ClassDescriptor
 import org.jetbrains.kotlin.descriptors.ClassKind
 import org.jetbrains.kotlin.descriptors.DeclarationDescriptor
+import org.jetbrains.kotlin.descriptors.annotations.Annotations
 import org.jetbrains.kotlin.idea.analysis.analyzeAsReplacement
 import org.jetbrains.kotlin.idea.caches.resolve.analyze
 import org.jetbrains.kotlin.idea.caches.resolve.getResolutionFacade
@@ -27,18 +28,20 @@ import org.jetbrains.kotlin.idea.resolve.frontendService
 import org.jetbrains.kotlin.idea.util.ImportInsertHelper
 import org.jetbrains.kotlin.idea.util.getResolutionScope
 import org.jetbrains.kotlin.incremental.components.NoLookupLocation
+import org.jetbrains.kotlin.kdoc.psi.impl.KDocName
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.name.Name
 import org.jetbrains.kotlin.psi.*
+import org.jetbrains.kotlin.psi.psiUtil.getNonStrictParentOfType
+import org.jetbrains.kotlin.psi.psiUtil.getStrictParentOfType
 import org.jetbrains.kotlin.renderer.render
-import org.jetbrains.kotlin.resolve.BindingContext
-import org.jetbrains.kotlin.resolve.BindingTraceContext
-import org.jetbrains.kotlin.resolve.ImportPath
+import org.jetbrains.kotlin.resolve.*
 import org.jetbrains.kotlin.resolve.lazy.FileScopeProvider
 import org.jetbrains.kotlin.resolve.scopes.ImportingScope
 import org.jetbrains.kotlin.resolve.scopes.utils.findClassifier
 import org.jetbrains.kotlin.resolve.scopes.utils.parentsWithSelf
 import org.jetbrains.kotlin.resolve.scopes.utils.replaceImportingScopes
+import org.jetbrains.kotlin.resolve.source.getPsi
 import java.util.*
 
 class OptimizedImportsBuilder(
@@ -83,6 +86,7 @@ class OptimizedImportsBuilder(
     }
 
     private val importRules = HashSet<ImportRule>()
+    private val psiFactory = KtPsiFactory(file.project)
 
     fun buildOptimizedImports(): List<ImportPath>? {
         // TODO: should we drop unused aliases?
@@ -103,14 +107,16 @@ class OptimizedImportsBuilder(
         }
     }
 
-    private fun getExpressionToAnalyze(element: KtElement): KtExpression? {
+    private fun getElementToAnalyze(element: KtElement): KtElement? {
         val parent = element.parent
         return when {
             parent is KtQualifiedExpression && element == parent.selectorExpression -> parent
-            parent is KtCallExpression && element == parent.calleeExpression -> getExpressionToAnalyze(parent)
+            parent is KtCallExpression && element == parent.calleeExpression -> getElementToAnalyze(parent)
             parent is KtOperationExpression && element == parent.operationReference -> parent
-            parent is KtUserType -> null //TODO: is it always correct?
-            else -> element as? KtExpression //TODO: what if not expression? Example: KtPropertyDelegationMethodsReference
+            parent is KtUserType && element == parent.referenceExpression -> parent
+            element is KtPropertyDelegate -> element.getStrictParentOfType<KtProperty>()
+            element is KDocName -> element.getContainingDoc().getOwner()
+            else -> element.getNonStrictParentOfType<KtExpression>()
         }
     }
 
@@ -188,14 +194,26 @@ class OptimizedImportsBuilder(
                 for (ref in refs) {
                     val element = ref.element
                     val bindingContext = element.analyze()
-                    val expressionToAnalyze = getExpressionToAnalyze(element) ?: continue
+                    val elementToAnalyze = getElementToAnalyze(element) ?: continue
                     val newScope = element.getResolutionScope(bindingContext, file.getResolutionFacade()).replaceImportingScopes(newFileScope)
-                    val newBindingContext = expressionToAnalyze.analyzeAsReplacement(expressionToAnalyze, bindingContext, newScope, trace = BindingTraceContext())
 
                     testLog?.append("Additional checking of reference $ref\n")
 
                     val oldTargets = ref.resolve(bindingContext)
-                    val newTargets = ref.resolve(newBindingContext)
+                    val newTargets = when (elementToAnalyze) {
+                        is KtExpression -> {
+                            val newBindingContext = elementToAnalyze.analyzeAsReplacement(elementToAnalyze, bindingContext, newScope, trace = BindingTraceContext())
+                            ref.resolve(newBindingContext)
+                        }
+                        is KtUserType -> {
+                            val typeResolver = elementToAnalyze.getResolutionFacade().getFrontendService(TypeResolver::class.java)
+                            val resolutionContext = TypeResolutionContext(newScope, BindingTraceContext(), false, true, false)
+                            val newType = typeResolver.resolveTypeElement(resolutionContext, Annotations.EMPTY, null, elementToAnalyze)
+                            val constructor = if (newType.isBare) newType.bareTypeConstructor else newType.actualType.constructor
+                            listOfNotNull(constructor.declarationDescriptor)
+                        }
+                        else -> emptyList()
+                    }
                     if (!areTargetsEqual(oldTargets, newTargets)) {
                         testLog?.append("Changed resolve of $ref\n")
                         (oldTargets + newTargets).forEach { lockImportForDescriptor(it) }

@@ -183,7 +183,7 @@ class TypeResolver(
         }
     }
 
-    private fun resolveTypeElement(
+    fun resolveTypeElement(
         c: TypeResolutionContext,
         annotations: Annotations,
         outerModifierList: KtModifierList?,
