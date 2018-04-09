@@ -21,10 +21,10 @@ fun ModuleBuildTarget(module: JpsModule, isTests: Boolean) =
     ModuleBuildTarget(module, if (isTests) JavaModuleBuildTargetType.TEST else JavaModuleBuildTargetType.PRODUCTION)
 
 val JpsModule.productionBuildTarget
-    get() = ModuleBuildTarget(this, true)
+    get() = ModuleBuildTarget(this, false)
 
 val JpsModule.testBuildTarget
-    get() = ModuleBuildTarget(this, false)
+    get() = ModuleBuildTarget(this, true)
 
 private val kotlinBuildTargetsData = ConcurrentHashMap<ModuleBuildTarget, KotlinModuleBuilderTarget>()
 
@@ -72,4 +72,5 @@ private fun ModuleBuildTarget.hasJsStdLib(): Boolean {
 @TestOnly
 internal fun clearKotlinModuleBuildTargetDataBindings() {
     kotlinBuildTargetsData.clear()
+    IS_KOTLIN_JS_STDLIB_JAR_CACHE.clear()
 }

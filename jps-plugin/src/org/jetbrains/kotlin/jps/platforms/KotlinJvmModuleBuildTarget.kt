@@ -93,46 +93,6 @@ class KotlinJvmModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotl
         return true
     }
 
-    fun findClassPathRoots(): Collection<File> {
-        return allDependencies.classes().roots.filter { file ->
-            if (!file.exists()) {
-                val extension = file.extension
-
-                // Don't filter out files, we want to report warnings about absence through the common place
-                if (!(extension == "class" || extension == "jar")) {
-                    return@filter false
-                }
-            }
-
-            true
-        }
-    }
-
-    fun findModularJdkRoot(): File? {
-        // List of paths to JRE modules in the following format:
-        // jrt:///Library/Java/JavaVirtualMachines/jdk-9.jdk/Contents/Home!/java.base
-        val urls = JpsJavaExtensionService.dependencies(module)
-            .satisfying { dependency -> dependency is JpsSdkDependency }
-            .classes().urls
-
-        val url = urls.firstOrNull { it.startsWith(StandardFileSystems.JRT_PROTOCOL_PREFIX) } ?: return null
-
-        return File(url.substringAfter(StandardFileSystems.JRT_PROTOCOL_PREFIX).substringBeforeLast(URLUtil.JAR_SEPARATOR))
-    }
-
-    fun findSourceRoots(context: CompileContext): List<JvmSourceRoot> {
-        val roots = context.projectDescriptor.buildRootIndex.getTargetRoots(jpsModuleBuildTarget, context)
-        val result = ContainerUtil.newArrayList<JvmSourceRoot>()
-        for (root in roots) {
-            val file = root.rootFile
-            val prefix = root.packagePrefix
-            if (file.exists()) {
-                result.add(JvmSourceRoot(file, if (prefix.isEmpty()) null else prefix))
-            }
-        }
-        return result
-    }
-
     fun generateModuleDescription(
         context: CompileContext,
         chunk: ModuleChunk,
@@ -167,8 +127,6 @@ class KotlinJvmModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotl
                 }
             }
 
-            val targetType = target.jpsModuleBuildTarget.targetType
-            assert(targetType is JavaModuleBuildTargetType)
             val kotlinModuleId = target.moduleId
             builder.addModule(
                 kotlinModuleId.name,
@@ -178,7 +136,7 @@ class KotlinJvmModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotl
                 target.findClassPathRoots(),
                 target.findModularJdkRoot(),
                 kotlinModuleId.type,
-                (targetType as JavaModuleBuildTargetType).isTests,
+                isTests,
                 // this excludes the output directories from the class path, to be removed for true incremental compilation
                 outputDirs,
                 friendDirs
@@ -217,5 +175,45 @@ class KotlinJvmModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotl
                 throw RuntimeException(message, e)
             }
         }
+    }
+
+    fun findClassPathRoots(): Collection<File> {
+        return allDependencies.classes().roots.filter { file ->
+            if (!file.exists()) {
+                val extension = file.extension
+
+                // Don't filter out files, we want to report warnings about absence through the common place
+                if (!(extension == "class" || extension == "jar")) {
+                    return@filter false
+                }
+            }
+
+            true
+        }
+    }
+
+    fun findModularJdkRoot(): File? {
+        // List of paths to JRE modules in the following format:
+        // jrt:///Library/Java/JavaVirtualMachines/jdk-9.jdk/Contents/Home!/java.base
+        val urls = JpsJavaExtensionService.dependencies(module)
+            .satisfying { dependency -> dependency is JpsSdkDependency }
+            .classes().urls
+
+        val url = urls.firstOrNull { it.startsWith(StandardFileSystems.JRT_PROTOCOL_PREFIX) } ?: return null
+
+        return File(url.substringAfter(StandardFileSystems.JRT_PROTOCOL_PREFIX).substringBeforeLast(URLUtil.JAR_SEPARATOR))
+    }
+
+    fun findSourceRoots(context: CompileContext): List<JvmSourceRoot> {
+        val roots = context.projectDescriptor.buildRootIndex.getTargetRoots(jpsModuleBuildTarget, context)
+        val result = ContainerUtil.newArrayList<JvmSourceRoot>()
+        for (root in roots) {
+            val file = root.rootFile
+            val prefix = root.packagePrefix
+            if (file.exists()) {
+                result.add(JvmSourceRoot(file, if (prefix.isEmpty()) null else prefix))
+            }
+        }
+        return result
     }
 }

@@ -130,7 +130,6 @@ abstract class AbstractIncrementalJpsTest(
     }
 
     override fun tearDown() {
-        clearKotlinModuleBuildTargetDataBindings()
         restoreSystemProperties()
         (AbstractIncrementalJpsTest::myProject).javaField!![this] = null
         (AbstractIncrementalJpsTest::projectDescriptor).javaField!![this] = null

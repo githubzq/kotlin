@@ -62,6 +62,9 @@ import org.jetbrains.kotlin.incremental.components.LookupTracker
 import org.jetbrains.kotlin.incremental.withIC
 import org.jetbrains.kotlin.jps.JpsKotlinCompilerSettings
 import org.jetbrains.kotlin.jps.build.KotlinJpsBuildTest.LibraryDependency.*
+import org.jetbrains.kotlin.jps.platforms.KotlinJsModuleBuildTarget
+import org.jetbrains.kotlin.jps.platforms.kotlinData
+import org.jetbrains.kotlin.jps.platforms.productionBuildTarget
 import org.jetbrains.kotlin.load.kotlin.PackagePartClassUtils
 import org.jetbrains.kotlin.name.FqName
 import org.jetbrains.kotlin.test.KotlinTestUtils
@@ -248,16 +251,18 @@ open class KotlinJpsBuildTest : AbstractKotlinJpsBuildTestCase() {
     }
 
     private fun k2jsOutput(vararg moduleNames: String): Array<String> {
-        val list = arrayListOf<String>()
+        val list = mutableListOf<String>()
         for (moduleName in moduleNames) {
-            val outputDir = File("out/production/$moduleName")
-//            list.add(toSystemIndependentName(JpsJsModuleUtils.getOutputFile(outputDir, moduleName, false).path))
-//            list.add(toSystemIndependentName(JpsJsModuleUtils.getOutputMetaFile(outputDir, moduleName, false).path))
+            myProject.modules.forEach {
+                val productionTarget = it.productionBuildTarget.kotlinData as KotlinJsModuleBuildTarget
+                list.add(toSystemIndependentName(productionTarget.outputFile.relativeTo(workDir).path))
+                list.add(toSystemIndependentName(productionTarget.outputMetaFile.relativeTo(workDir).path))
 
-            val kjsmFiles = File(workDir, outputDir.path).walk()
-                .filter { it.isFile && it.extension.equals("kjsm", ignoreCase = true) }
-            list.addAll(kjsmFiles.map { toSystemIndependentName(it.relativeTo(workDir).path) })
+                val kjsmFiles = productionTarget.outputDir.walk()
+                    .filter { it.isFile && it.extension.equals("kjsm", ignoreCase = true) }
 
+                list.addAll(kjsmFiles.map { toSystemIndependentName(it.relativeTo(workDir).path) })
+            }
         }
         return list.toTypedArray()
     }
