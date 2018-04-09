@@ -27,6 +27,7 @@ import org.jetbrains.kotlin.jps.model.kotlinFacetExtension
 import org.jetbrains.kotlin.jps.productionOutputFilePath
 import org.jetbrains.kotlin.jps.testOutputFilePath
 import org.jetbrains.kotlin.modules.TargetId
+import org.jetbrains.kotlin.utils.addIfNotNull
 import java.io.File
 
 abstract class KotlinModuleBuilderTarget(val jpsModuleBuildTarget: ModuleBuildTarget) {
@@ -67,14 +68,11 @@ abstract class KotlinModuleBuilderTarget(val jpsModuleBuildTarget: ModuleBuildTa
             val result = mutableListOf<KotlinModuleBuilderTarget>()
 
             if (isTests) {
-                relatedProductionModule?.productionBuildTarget?.kotlinData?.let {
-                    if (it.sources.isNotEmpty()) {
-                        result.add(it)
-                    }
-                }
+                result.addIfNotNull(module.productionBuildTarget.kotlinData)
+                result.addIfNotNull(relatedProductionModule?.productionBuildTarget?.kotlinData)
             }
 
-            return result
+            return result.filter { it.sources.isNotEmpty() }
         }
 
     val friendOutputDirs: List<File>
