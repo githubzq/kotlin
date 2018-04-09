@@ -62,23 +62,15 @@ abstract class KotlinModuleBuilderTarget(val jpsModuleBuildTarget: ModuleBuildTa
 
     val compilerSettings by lazy { JpsKotlinCompilerSettings.getCompilerSettings(module) }
 
-    val hasProductionSourceRoot
-        get() = module.sourceRoots.any { it.rootType == JavaSourceRootType.SOURCE }
-
-    val hasTestSourceRoot
-        get() = module.sourceRoots.any { it.rootType == JavaSourceRootType.TEST_SOURCE }
-
-    val hasSourceRoot
-        get() = if (isTests) hasTestSourceRoot else hasProductionSourceRoot
-
     val friendBuildTargets: List<KotlinModuleBuilderTarget>
         get() {
             val result = mutableListOf<KotlinModuleBuilderTarget>()
-            if (isTests) return result
 
-            relatedProductionModule?.productionBuildTarget?.kotlinData?.let {
-                if (it.hasSourceRoot) {
-                    result.add(it)
+            if (isTests) {
+                relatedProductionModule?.productionBuildTarget?.kotlinData?.let {
+                    if (it.sources.isNotEmpty()) {
+                        result.add(it)
+                    }
                 }
             }
 
@@ -100,12 +92,14 @@ abstract class KotlinModuleBuilderTarget(val jpsModuleBuildTarget: ModuleBuildTa
 
     val expectedBy by lazy(::findExpectedBy)
 
-    private fun findExpectedBy(): List<JpsModule> {
+    private fun findExpectedBy(): List<KotlinModuleBuilderTarget> {
         val kotlinFacetExtension = module.kotlinFacetExtension
         val implementedModuleNames = kotlinFacetExtension?.settings?.implementedModuleNames ?: return listOf()
         if (implementedModuleNames.isEmpty()) return listOf()
 
-        return allDependencies.modules.filter { it.name in implementedModuleNames }
+        return allDependencies.modules
+            .filter { it.name in implementedModuleNames }
+            .map { ModuleBuildTarget(it, isTests).kotlinData!! }
     }
 
     fun getRemovedKotlinFiles(dirtyFilesHolder: DirtyFilesHolder<JavaSourceRootDescriptor, ModuleBuildTarget>): List<File> =
@@ -117,7 +111,7 @@ abstract class KotlinModuleBuilderTarget(val jpsModuleBuildTarget: ModuleBuildTa
         mutableListOf<File>().also { result ->
             // add all common libs sources
             expectedBy.forEach {
-                collectSources(result)
+                it.collectSources(result)
             }
 
             collectSources(result)
@@ -136,7 +130,9 @@ abstract class KotlinModuleBuilderTarget(val jpsModuleBuildTarget: ModuleBuildTa
             it.file.walkTopDown()
                 .onEnter { it !in moduleExcludes }
                 .filterTo(receiver) {
-                    !compilerExcludes.isExcluded(it) && it.isFile && KotlinSourceFileCollector.isKotlinSourceFile(it)
+                    !compilerExcludes.isExcluded(it) &&
+                            it.isFile &&
+                            KotlinSourceFileCollector.isKotlinSourceFile(it)
                 }
         }
     }

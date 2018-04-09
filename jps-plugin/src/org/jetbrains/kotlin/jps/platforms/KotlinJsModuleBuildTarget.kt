@@ -12,9 +12,9 @@ import org.jetbrains.jps.builders.java.JavaSourceRootDescriptor
 import org.jetbrains.jps.incremental.CompileContext
 import org.jetbrains.jps.incremental.ModuleBuildTarget
 import org.jetbrains.jps.model.library.JpsOrderRootType
+import org.jetbrains.jps.model.module.JpsModule
 import org.jetbrains.jps.util.JpsPathUtil
 import org.jetbrains.kotlin.cli.common.arguments.CommonCompilerArguments
-import org.jetbrains.kotlin.cli.common.messages.CompilerMessageSeverity
 import org.jetbrains.kotlin.compilerRunner.JpsCompilerEnvironment
 import org.jetbrains.kotlin.compilerRunner.JpsKotlinCompilerRunner
 import org.jetbrains.kotlin.jps.JpsKotlinCompilerSettings
@@ -44,19 +44,10 @@ class KotlinJsModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotli
         }
 
     val outputFileBaseName: String
-        get() {
-            val outputFile = outputFile
-
-            check(outputFile.endsWith(JS_EXT)) {
-                "Bad $module KotlinJs compiler arguments: Output file should have name \"*.js\": $outputFile"
-            }
-
-            return outputFile.name.removeSuffix(JS_EXT)
-        }
+        get() = outputFile.path.substringBeforeLast(".")
 
     val outputMetaFile: File
         get() = File(outputFileBaseName + META_JS_SUFFIX)
-
 
     val libraryFiles: List<String>
         get() = mutableListOf<String>().also { result ->
@@ -70,17 +61,30 @@ class KotlinJsModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotli
     val dependenciesMetaFiles: List<String>
         get() = mutableListOf<String>().also { result ->
             allDependencies.processModules { module ->
-                val dependencyBuildTarget = ModuleBuildTarget(module, isTests).kotlinData
+                if (isTests) addDependencyMetaFile(module, result, isTests = true)
 
-                if (dependencyBuildTarget is KotlinJsModuleBuildTarget && dependencyBuildTarget.hasSourceRoot) {
-                    val metaFile = dependencyBuildTarget.outputMetaFile
-                    if (metaFile.exists()) {
-                        result.add(metaFile.absolutePath)
-                    }
-                }
+                // production targets should be also added as dependency to test targets
+                addDependencyMetaFile(module, result, isTests = false)
             }
         }
 
+    private fun addDependencyMetaFile(
+        module: JpsModule,
+        result: MutableList<String>,
+        isTests: Boolean
+    ) {
+        val dependencyBuildTarget = ModuleBuildTarget(module, isTests).kotlinData
+
+        if (dependencyBuildTarget != this@KotlinJsModuleBuildTarget &&
+            dependencyBuildTarget is KotlinJsModuleBuildTarget &&
+            dependencyBuildTarget.sources.isNotEmpty()
+        ) {
+            val metaFile = dependencyBuildTarget.outputMetaFile
+            if (metaFile.exists()) {
+                result.add(metaFile.absolutePath)
+            }
+        }
+    }
 
     override fun compileModuleChunk(
         allCompiledFiles: MutableSet<File>,
@@ -116,6 +120,8 @@ class KotlinJsModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotli
             (it as? KotlinJsModuleBuildTarget)?.outputMetaFile?.absoluteFile?.toString()
         }
 
+        val libraries = libraryFiles + dependenciesMetaFiles
+
         val compilerRunner = JpsKotlinCompilerRunner()
         compilerRunner.runK2JsCompiler(
             commonArguments,
@@ -124,7 +130,7 @@ class KotlinJsModuleBuildTarget(jpsModuleBuildTarget: ModuleBuildTarget) : Kotli
             environment,
             sources,
             sourceRoots,
-            libraryFiles + dependenciesMetaFiles,
+            libraries,
             friendPaths,
             outputFile
         )
