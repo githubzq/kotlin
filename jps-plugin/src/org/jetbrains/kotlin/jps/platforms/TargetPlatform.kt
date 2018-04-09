@@ -72,5 +72,4 @@ private fun ModuleBuildTarget.hasJsStdLib(): Boolean {
 @TestOnly
 internal fun clearKotlinModuleBuildTargetDataBindings() {
     kotlinBuildTargetsData.clear()
-    IS_KOTLIN_JS_STDLIB_JAR_CACHE.clear()
 }
